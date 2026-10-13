@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect} from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -40,14 +41,83 @@ function BookAppointment() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [booked, setBooked] = useState(false);
+  const [apiDoctors, setApiDoctors] = useState([]);
+const [bookingError, setBookingError] = useState("");
+const [bookingToken, setBookingToken] = useState("");
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+useEffect(() => {
+  const loadDoctors = async () => {
+    try {
+      const response = await fetch(
+        "http://localhost:5000/api/doctors"
+      );
 
-    if (!department || !doctor || !date || !time) return;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-    setBooked(true);
+      const data = await response.json();
+
+      setApiDoctors(Array.isArray(data) ? data : data.doctors ?? []);
+      setBookingError("");
+    } catch (error) {
+      console.error("Doctors loading failed:", error);
+      setBookingError(
+        "Doctors load nahi hue. Backend check karo."
+      );
+    }
   };
+
+  loadDoctors();
+}, []);
+
+  async function handleSubmit(event) {
+  event.preventDefault();
+  setBookingError("");
+  setBookingToken("");
+
+  if (!department || !doctor || !date || !time) {
+    setBookingError("Please fill all appointment details.");
+    return;
+  }
+
+  const selectedDoctor = apiDoctors.find(
+    (item) =>
+      item.user.name === doctor ||
+      item.user.name === `Dr. ${doctor}`
+  );
+
+  if (!selectedDoctor) {
+    setBookingError("Selected doctor API mein nahi mila.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/appointments",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doctorId: selectedDoctor.id,
+          appointmentDate: date,
+          appointmentTime: time,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Booking failed");
+    }
+
+    setBookingToken(result.appointment.queue.tokenNumber);
+    setBooked(true);
+  } catch (error) {
+    setBookingError(error.message || "Booking failed");
+  }
+}
 
   if (booked) {
     return (
@@ -211,6 +281,15 @@ function BookAppointment() {
                 </div>
               </div>
             </div>
+            {bookingError && (
+  <p className="text-red-600 text-sm">{bookingError}</p>
+)}
+
+{bookingToken && (
+  <p className="text-green-700 font-semibold">
+    Your queue token: {bookingToken}
+  </p>
+)}
 
             <button
               type="submit"
