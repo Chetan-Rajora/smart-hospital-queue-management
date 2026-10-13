@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum QueueStatus {
+  WAITING
+  SERVING
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum QueuePriority {
+  NORMAL
+  SENIOR
+  EMERGENCY
+}
+
+enum NotificationType {
+  QUEUE_UPDATE
+  APPOINTMENT
+  SYSTEM
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  name          String
+  email         String         @unique
+  password      String
+  role          UserRole       @default(PATIENT)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  doctor        Doctor?
+  appointments  Appointment[]  @relation("PatientAppointments")
+  notifications Notification[]
+}
+
+model Department {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+
+  doctors     Doctor[]
+}
+
+model Doctor {
+  id             Int           @id @default(autoincrement())
+  userId         Int           @unique
+  departmentId   Int
+  specialization String
+  availability   Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department     Department    @relation(fields: [departmentId], references: [id])
+  appointments   Appointment[]
+}
+
+model Appointment {
+  id              Int               @id @default(autoincrement())
+  patientId       Int
+  doctorId        Int
+  appointmentDate DateTime
+  appointmentTime String
+  status          AppointmentStatus  @default(BOOKED)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  patient         User              @relation("PatientAppointments", fields: [patientId], references: [id])
+  doctor          Doctor            @relation(fields: [doctorId], references: [id])
+  queue           Queue?
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([appointmentDate])
+}
+
+model Queue {
+  id            Int            @id @default(autoincrement())
+  appointmentId Int            @unique
+  tokenNumber   String
+  priority      QueuePriority  @default(NORMAL)
+  status        QueueStatus    @default(WAITING)
+  joinedAt      DateTime       @default(now())
+  servedAt      DateTime?
+
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([priority])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
