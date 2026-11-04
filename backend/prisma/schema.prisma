@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -18,6 +19,7 @@ model User {
   appointments  Appointment[]  @relation("PatientAppointments")
   doctor        Doctor?
   notifications Notification[]
+  reviewedEmergencies Appointment[] @relation("EmergencyReviewer")
 }
 
 model Department {
@@ -33,9 +35,12 @@ model Doctor {
   userId         Int           @unique
   departmentId   Int
   specialization String
+  qualifications String?
+  serviceMode    ServiceMode   @default(CONSULTATION)
   availability   Boolean       @default(true)
   createdAt      DateTime      @default(now())
   appointments   Appointment[]
+  queueSequences QueueSequence[]
   department     Department    @relation(fields: [departmentId], references: [id])
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -45,17 +50,26 @@ model Appointment {
   patientId       Int
   doctorId        Int
   appointmentDate DateTime
-  appointmentTime String
-  status          AppointmentStatus @default(BOOKED)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  doctor          Doctor            @relation(fields: [doctorId], references: [id])
-  patient         User              @relation("PatientAppointments", fields: [patientId], references: [id])
-  queue           Queue?
+  appointmentTime     String
+  slot                AppointmentSlot?
+  bookingType         BookingType           @default(NORMAL)
+  emergencyStatus     EmergencyStatus       @default(NOT_APPLICABLE)
+  surchargeAmount     Int                   @default(0)
+  emergencyReviewedAt DateTime?
+  emergencyReviewedById Int?
+  status              AppointmentStatus     @default(BOOKED)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  doctor              Doctor                @relation(fields: [doctorId], references: [id])
+  patient             User                  @relation("PatientAppointments", fields: [patientId], references: [id])
+  emergencyReviewedBy User?                 @relation("EmergencyReviewer", fields: [emergencyReviewedById], references: [id], onDelete: SetNull)
+  queue               Queue?
 
   @@index([patientId])
   @@index([doctorId])
   @@index([appointmentDate])
+  @@index([doctorId, appointmentDate, slot])
+  @@index([emergencyStatus])
 }
 
 model Queue {
@@ -70,6 +84,17 @@ model Queue {
 
   @@index([status])
   @@index([priority])
+}
+
+model QueueSequence {
+  id              Int             @id @default(autoincrement())
+  doctorId        Int
+  appointmentDate DateTime        @db.Date
+  slot            AppointmentSlot
+  lastNumber      Int             @default(0)
+  doctor          Doctor          @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, appointmentDate, slot])
 }
 
 model Notification {
@@ -89,6 +114,28 @@ enum UserRole {
   PATIENT
   DOCTOR
   ADMIN
+}
+
+enum ServiceMode {
+  CONSULTATION
+  DIAGNOSTIC
+}
+
+enum AppointmentSlot {
+  MORNING
+  AFTERNOON
+}
+
+enum BookingType {
+  NORMAL
+  EMERGENCY
+}
+
+enum EmergencyStatus {
+  NOT_APPLICABLE
+  PENDING
+  APPROVED
+  DECLINED
 }
 
 enum AppointmentStatus {
